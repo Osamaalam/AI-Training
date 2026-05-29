@@ -6,21 +6,75 @@ This repository contains a high-performance, production-ready pipeline for fine-
 
 ## 📖 Table of Contents
 - [Project Overview](#project-overview)
-- [Architecture & Optimization](#architecture--optimization)
-- [Project Structure](#project-structure)
-- [Environment Setup](#environment-setup)
-- [Configuration Guide](#configuration-guide)
-- [Training Execution](#training-execution)
-- [Results & Explainability Analysis](#results--explainability-analysis)
-  - [Fracture Detection Results](#fracture-detection-results)
-  - [Torsion Abnormality Results](#torsion-abnormality-results)
-  - [Occlusion Heatmaps & Model Interpretability](#occlusion-heatmaps--model-interpretability)
+- [🏥 End-to-End Clinical Enterprise Pipeline](#-end-to-end-clinical-enterprise-pipeline)
+  - [1. PACS Ingestion (Philips IntelliSpace)](#1-pacs-ingestion-philips-intellispace)
+  - [2. DICOM Preprocessing & Conversion](#2-dicom-preprocessing--conversion)
+  - [3. Training Augmentations](#3-training-augmentations)
+  - [4. GCP Real-Time Inference Server](#4-gcp-real-time-inference-server)
+  - [5. Real-Time Closed-Loop PACS Integration](#5-real-time-closed-loop-pacs-integration)
+- [⚡ Architecture & Optimization](#-architecture--optimization)
+- [📂 Project Structure](#-project-structure)
+- [🛠️ Environment Setup](#%EF%B8%8F-environment-setup)
+- [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide)
+- [🚀 Training Execution](#-training-execution)
+- [📊 Results & Explainability Analysis](#-results--explainability-analysis)
+  - [📈 Fracture Detection Results](#-fracture-detection-results)
+  - [🔄 Torsion Abnormality Results](#-torsion-abnormality-results)
+  - [🔍 Occlusion Heatmaps & Model Interpretability](#-occlusion-heatmaps--model-interpretability)
 
 ---
 
 ## 🎯 Project Overview
 
 In clinical orthopedics, automated fracture and torsion detection serves as a critical decision-support tool. This project implements a visual question-answering (VQA) paradigm where a pre-trained 8B-parameter Vision-Language Model is formatted to receive X-ray scans with clinical instruction prompts, classifying them directly into binary categories: **positive** (abnormality detected) or **negative** (no abnormality).
+
+---
+
+## 🏥 End-to-End Clinical Enterprise Pipeline
+
+To operate successfully within a hospital infrastructure, this VLM classifier goes far beyond static file training. It is designed as an end-to-end automated clinical loop integrated directly with hospital DICOM networks and cloud infrastructure.
+
+```text
+  +------------------+             +----------------------+             +----------------------+
+  |   Philips PACS   |  (C-STORE)  | Local DICOM Gateway  |  (HTTPS)    | GCP Inference Server |
+  | (Acquisition/QA) | ----------> | (Orthanc/dcm4chee)   | ----------> |  (Triton/vLLM + GPU) |
+  +------------------+             +----------------------+             +----------------------+
+           ^                                                                        |
+           |                                                                        | (Inference)
+           |                          (C-STORE SR / Capture)                        v
+           +------------------------------------------------------------------------+
+```
+
+### 1. PACS Ingestion (Philips IntelliSpace)
+- **Acquisition**: X-ray modalities (`DX` / `CR`) send raw radiographic scans to the **Philips IntelliSpace PACS** system.
+- **Trigger**: Upon technician acquisition and validation, a PACS routing rule automatically triggers a `C-STORE` push command, sending the raw DICOM files to an on-premise, secure DICOM Router Gateway (e.g., *Orthanc* or *dcm4chee*) which acts as a bridge.
+
+### 2. DICOM Preprocessing & Conversion
+Once the router receives the DICOM instance, the preprocessing microservice executes:
+1. **Metadata Filtering**: Inspects DICOM headers (`Modality == "DX" or "CR"`, and `BodyPartExamined` in `["WRIST", "ELBOW", "HAND", "SHOULDER"]`) using `pydicom`.
+2. **HIPAA Anonymization**: Scrubs Patient Identifying Information (PHI) like PatientName, PatientID, and BirthDate to guarantee absolute clinical data privacy.
+3. **Bit-Depth Scaling & Windowing**: High-dynamic-range raw pixels ($12$-bit or $16$-bit) are windowed using the DICOM `Window Center` ($WC$) and `Window Width` ($WW$) attributes to map pixels into an optimized $8$-bit PNG representation.
+4. **Equalization (CLAHE)**: Applies Contrast Limited Adaptive Histogram Equalization to highlight faint micro-fractures, hair-line cracks, and cortical bone disruptions.
+
+### 3. Training Augmentations
+For training resilience, processed images undergo an inline augmentation pipeline:
+- Spatial modifications: Random rotation ($\pm 15^\circ$), translation, and elastic warping to mimic variations in patient joint positioning.
+- Contrast & brightness variations to account for different X-ray machine manufacturers.
+- Conversion to structured VLM dialogue templates containing clinical directives and body modality annotations.
+
+### 4. GCP Real-Time Inference Server
+The model is deployed in a high-availability, low-latency configuration on Google Cloud Platform (GCP):
+- **Infrastructure**: Hosted on Google Kubernetes Engine (GKE) or VM nodes equipped with **NVIDIA L4 or A100 GPUs**.
+- **Model Server**: Containerized using **Triton Inference Server** or an optimized **FastAPI + vLLM** back-end with dynamic batching.
+- **Quantization**: Employs $16$-bit precision or $4$-bit AWQ quantization to reduce end-to-end latency to **$< 350$ms** per scan.
+
+### 5. Real-Time Closed-Loop PACS Integration
+1. **Request**: The DICOM Router forwards the preprocessed PNG payload along with the modality tags to the GCP inference service over an encrypted **TLS 1.3** connection.
+2. **Analysis**: The VLM detects abnormalities, generates classification confidence, and produces an **Occlusion Heatmap** highlighting the exact fracture site.
+3. **Structured Response**: The GCP server compiles the outputs and returns them to the Local DICOM Router.
+4. **DICOM Wrapper**: The Router encapsulates the diagnostic prediction (positive/negative) and confidence metrics into a standard **DICOM Structured Report (SR)**. Additionally, it burns the occlusion heatmap overlay into a **Secondary Capture DICOM image**.
+5. **C-STORE Feed**: The router pushes both files back to the **Philips PACS** server via standard medical ports.
+6. **Clinical Review**: Within **$< 3$ seconds** of acquisition, the reviewing Radiologist receives the fracture heatmap directly inside their standard Philips clinical viewer as a secondary series, facilitating immediate diagnostic confidence.
 
 ---
 
