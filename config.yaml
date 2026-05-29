@@ -1,0 +1,55 @@
+# ==============================================================================
+# Fracture Detection VLM Training Configuration
+# ==============================================================================
+
+# Model Settings
+model:
+  model_name: "../Models/VLM-unsloth-8b"
+  load_in_4bit: false
+  load_in_16bit: true
+  dtype: "bfloat16" # Choose from "bfloat16", "float16", "float32"
+  use_gradient_checkpointing: "unsloth" # "unsloth", "true", or "false"
+
+# Parameter-Efficient Fine-Tuning (PEFT) / LoRA Configuration
+peft:
+  r: 16
+  lora_alpha: 16 # Recommended: same as r or 2*r
+  lora_dropout: 0
+  bias: "none"
+  random_state: 3407
+  use_rslora: true # Rank-Stabilized LoRA for smoother learning
+  finetune_vision_layers: true
+  finetune_language_layers: true
+  finetune_attention_modules: true
+  finetune_mlp_modules: true
+
+# Dataset Configurations
+dataset:
+  train_csv_path: "train.csv"
+  val_csv_path: "valid.csv"
+  max_length: 2048
+
+# Training Hyperparameters (SFTConfig / SFTTrainer)
+training:
+  output_dir: "outputs-16-32-6-1e4-8b-16bit"
+  num_train_epochs: 6
+  per_device_train_batch_size: 16
+  gradient_accumulation_steps: 2
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  lr_scheduler_type: "cosine"
+  optim: "adamw_torch"
+  seed: 3407
+  
+  # Logging & Evaluation
+  logging_steps: 10
+  eval_strategy: "steps"
+  eval_steps: 200
+  save_strategy: "epoch"
+  report_to: "none" # Use "wandb" or "tensorboard" for experiment tracking
+  
+  # Hardware & Efficiency
+  bf16: true
+  torch_compile: false
+  remove_unused_columns: false
