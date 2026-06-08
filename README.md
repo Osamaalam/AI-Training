@@ -1,3 +1,5 @@
+Updated: 2026-06-08
+
 # 🦴 Fracture and Torsion Abnormality Detection in Musculoskeletal X-Rays via Fine-Tuned VLMs
 
 This repository contains a high-performance, production-ready pipeline for fine-tuning Vision-Language Models (VLMs) on musculoskeletal X-ray images to detect fractures and torsion abnormalities. It utilizes state-of-the-art parameter-efficient fine-tuning (PEFT/LoRA) coupled with **Unsloth** for 2x faster training and high memory efficiency.
