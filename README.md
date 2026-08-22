@@ -1,4 +1,4 @@
-Updated: 2026-07-21
+Updated: 2026-08-22
 
 # 🦴 Fracture and Torsion Abnormality Detection in Musculoskeletal X-Rays via Fine-Tuned VLMs
 
